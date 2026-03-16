@@ -23,7 +23,7 @@ const COLORS = [
   "#A78BFA", // purple
   "#FB923C", // orange
   "#22C55E", // green
-  "#60A5FA", // blue
+  "#3B82F6", // blue
   "#F472B6", // pink
 ];
 
