@@ -682,17 +682,21 @@ export default function App() {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setMenuOpen(false);
       if (e.key === "s" || e.key === "S") setMenuOpen((v) => !v);
+      if (e.key === "f" || e.key === "F") {
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        } else {
+          document.documentElement.requestFullscreen().catch(() => {});
+        }
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Request fullscreen + unlock audio on first user interaction
+  // Unlock audio on first user interaction
   useEffect(() => {
     function onFirstInteraction() {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(() => {});
-      }
       initAudio();
       setMusic(settingsRef.current.music);
       document.removeEventListener("click", onFirstInteraction);
