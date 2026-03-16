@@ -232,7 +232,8 @@ const SPAWN_INTERVAL = 1800;
 const EXPLODE_COUNT = 12;
 const SINGLE_DURATION = 300;
 const EXPLODE_DURATION = 60;
-const SCATTER_DURATION = 420;
+const SCATTER_DURATION_MIN = 1800; // 30s at 60fps
+const SCATTER_DURATION_MAX = 3600; // 60s at 60fps
 const REUNITE_DURATION = 120;
 const PAUSE_DURATION = 60;
 
@@ -536,6 +537,7 @@ export default function App() {
     let explodeShapes: Shape[] = [];
     let explodeTarget = { x: 0, y: 0 };
     let currentMode: Mode = "classic";
+    let scatterDuration = 0;
 
     function initExplodeMode(w: number, h: number, s: Settings) {
       explodePhase = "single";
@@ -703,6 +705,7 @@ export default function App() {
           }
           explodePhase = "scattered";
           explodeTimer = 0;
+          scatterDuration = Math.round(random(SCATTER_DURATION_MIN, SCATTER_DURATION_MAX));
         }
       } else if (explodePhase === "scattered") {
         for (const shape of explodeShapes) {
@@ -713,7 +716,7 @@ export default function App() {
           drawShape(ctx, shape);
         }
 
-        if (explodeTimer >= SCATTER_DURATION) {
+        if (explodeTimer >= scatterDuration) {
           // Pick a reunion target
           explodeTarget = { x: w / 2 + random(-w * 0.2, w * 0.2), y: h * 0.5 + random(-h * 0.15, h * 0.15) };
           explodePhase = "reuniting";
