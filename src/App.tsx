@@ -234,7 +234,7 @@ const SINGLE_DURATION = 300;
 const EXPLODE_DURATION = 60;
 const SCATTER_DURATION_MIN = 1800; // 30s at 60fps
 const SCATTER_DURATION_MAX = 3600; // 60s at 60fps
-const REUNITE_DURATION = 120;
+const REUNITE_DURATION = 300;
 const PAUSE_DURATION = 60;
 
 type ExplodePhase = "single" | "exploding" | "scattered" | "reuniting" | "pause";
