@@ -515,7 +515,8 @@ function SettingsMenu({
         value={settings.music}
         labels={{ off: "Off", piano: "Piano", space: "Space" }}
         onChange={(v) => {
-          initAudio().then(() => setMusic(v));
+          initAudio();
+          setMusic(v);
           update({ music: v });
         }}
       />
@@ -692,10 +693,8 @@ export default function App() {
       if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen().catch(() => {});
       }
-      initAudio().then(() => {
-        // If music was already selected in settings, start it now
-        setMusic(settingsRef.current.music);
-      });
+      initAudio();
+      setMusic(settingsRef.current.music);
       document.removeEventListener("click", onFirstInteraction);
       document.removeEventListener("touchstart", onFirstInteraction);
     }
