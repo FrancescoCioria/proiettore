@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface Shape {
   type: "circle" | "triangle" | "square" | "star";
@@ -14,6 +14,40 @@ interface Shape {
   phase: "fadein" | "alive" | "fadeout";
   life: number;
   maxLife: number;
+}
+
+export interface Settings {
+  shapeCount: number;
+  sizeMin: number;
+  sizeMax: number;
+  speedMin: number;
+  speedMax: number;
+  topBias: number;
+  hPadding: number;
+}
+
+const DEFAULT_SETTINGS: Settings = {
+  shapeCount: 5,
+  sizeMin: 40,
+  sizeMax: 120,
+  speedMin: 0.3,
+  speedMax: 2.5,
+  topBias: 0.4,
+  hPadding: 0.15,
+};
+
+const STORAGE_KEY = "forme-settings";
+
+function loadSettings(): Settings {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+  } catch {}
+  return { ...DEFAULT_SETTINGS };
+}
+
+function saveSettings(s: Settings) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
 }
 
 const COLORS = [
@@ -37,9 +71,6 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-const H_PADDING = 0.15; // 15% horizontal padding
-const TOP_BIAS = 0.4; // shapes spawn in the bottom 60% of the screen
-
 let colorIndex = 0;
 
 function nextColor(): string {
@@ -48,16 +79,16 @@ function nextColor(): string {
   return color;
 }
 
-function createShape(w: number, h: number): Shape {
-  const size = random(40, 120);
-  const speed = random(0.3, 2.5);
+function createShape(w: number, h: number, s: Settings): Shape {
+  const size = random(s.sizeMin, s.sizeMax);
+  const speed = random(s.speedMin, s.speedMax);
   const angle = random(0, Math.PI * 2);
-  const padX = w * H_PADDING;
+  const padX = w * s.hPadding;
 
   return {
     type: pick(SHAPE_TYPES),
     x: random(padX + size, w - padX - size),
-    y: random(h * TOP_BIAS + size, h - size),
+    y: random(h * s.topBias + size, h - size),
     size,
     color: nextColor(),
     vx: Math.cos(angle) * speed,
@@ -67,14 +98,11 @@ function createShape(w: number, h: number): Shape {
     opacity: 0,
     phase: "fadein",
     life: 0,
-    maxLife: random(1200, 3600), // frames (~20-60s at 60fps)
+    maxLife: random(1200, 3600),
   };
 }
 
-function drawShape(
-  ctx: CanvasRenderingContext2D,
-  shape: Shape
-) {
+function drawShape(ctx: CanvasRenderingContext2D, shape: Shape) {
   ctx.save();
   ctx.translate(shape.x, shape.y);
   ctx.rotate(shape.rotation);
@@ -91,13 +119,11 @@ function drawShape(
       ctx.arc(0, 0, s, 0, Math.PI * 2);
       ctx.fill();
       break;
-
     case "square":
       ctx.beginPath();
       ctx.roundRect(-s, -s, s * 2, s * 2, s * 0.15);
       ctx.fill();
       break;
-
     case "triangle":
       ctx.beginPath();
       ctx.moveTo(0, -s);
@@ -106,20 +132,13 @@ function drawShape(
       ctx.closePath();
       ctx.fill();
       break;
-
     case "star": {
       ctx.beginPath();
       for (let i = 0; i < 5; i++) {
         const outerAngle = (i * 2 * Math.PI) / 5 - Math.PI / 2;
         const innerAngle = outerAngle + Math.PI / 5;
-        ctx.lineTo(
-          Math.cos(outerAngle) * s,
-          Math.sin(outerAngle) * s
-        );
-        ctx.lineTo(
-          Math.cos(innerAngle) * s * 0.4,
-          Math.sin(innerAngle) * s * 0.4
-        );
+        ctx.lineTo(Math.cos(outerAngle) * s, Math.sin(outerAngle) * s);
+        ctx.lineTo(Math.cos(innerAngle) * s * 0.4, Math.sin(innerAngle) * s * 0.4);
       }
       ctx.closePath();
       ctx.fill();
@@ -130,18 +149,221 @@ function drawShape(
   ctx.restore();
 }
 
-const FADE_FRAMES = 120; // 2 seconds
-const MAX_SHAPES = 5;
-const SPAWN_INTERVAL = 1800; // new shape every ~30s
+const FADE_FRAMES = 120;
+const SPAWN_INTERVAL = 1800;
+
+// --- Settings Menu ---
+
+function SettingsMenu({
+  settings,
+  onChange,
+  onClose,
+}: {
+  settings: Settings;
+  onChange: (s: Settings) => void;
+  onClose: () => void;
+}) {
+  const update = (partial: Partial<Settings>) => {
+    const next = { ...settings, ...partial };
+    onChange(next);
+    saveSettings(next);
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 320,
+        background: "rgba(20, 20, 20, 0.95)",
+        color: "#fff",
+        padding: "24px 20px",
+        fontFamily: "system-ui, sans-serif",
+        fontSize: 14,
+        overflowY: "auto",
+        zIndex: 100,
+        cursor: "default",
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
+        <span style={{ fontSize: 18, fontWeight: 600 }}>Impostazioni</span>
+        <button
+          onClick={onClose}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#999",
+            fontSize: 24,
+            cursor: "pointer",
+            padding: "0 4px",
+            lineHeight: 1,
+          }}
+        >
+          &times;
+        </button>
+      </div>
+
+      <SliderRow
+        label="Numero forme"
+        value={settings.shapeCount}
+        min={1}
+        max={10}
+        step={1}
+        onChange={(v) => update({ shapeCount: v })}
+      />
+      <SliderRow
+        label="Dimensione min"
+        value={settings.sizeMin}
+        min={10}
+        max={200}
+        step={5}
+        onChange={(v) => update({ sizeMin: Math.min(v, settings.sizeMax) })}
+      />
+      <SliderRow
+        label="Dimensione max"
+        value={settings.sizeMax}
+        min={10}
+        max={200}
+        step={5}
+        onChange={(v) => update({ sizeMax: Math.max(v, settings.sizeMin) })}
+      />
+      <SliderRow
+        label="Velocit&agrave; min"
+        value={settings.speedMin}
+        min={0.1}
+        max={5}
+        step={0.1}
+        format={(v) => v.toFixed(1)}
+        onChange={(v) => update({ speedMin: Math.min(v, settings.speedMax) })}
+      />
+      <SliderRow
+        label="Velocit&agrave; max"
+        value={settings.speedMax}
+        min={0.1}
+        max={5}
+        step={0.1}
+        format={(v) => v.toFixed(1)}
+        onChange={(v) => update({ speedMax: Math.max(v, settings.speedMin) })}
+      />
+
+      <div style={{ borderTop: "1px solid #333", margin: "20px 0", paddingTop: 16 }}>
+        <span style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, display: "block" }}>Finestra</span>
+        <SliderRow
+          label="Limite superiore"
+          value={Math.round(settings.topBias * 100)}
+          min={0}
+          max={80}
+          step={5}
+          format={(v) => `${v}%`}
+          onChange={(v) => update({ topBias: v / 100 })}
+        />
+        <SliderRow
+          label="Padding laterale"
+          value={Math.round(settings.hPadding * 100)}
+          min={0}
+          max={40}
+          step={1}
+          format={(v) => `${v}%`}
+          onChange={(v) => update({ hPadding: v / 100 })}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SliderRow({
+  label,
+  value,
+  min,
+  max,
+  step,
+  format,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  format?: (v: number) => string;
+  onChange: (v: number) => void;
+}) {
+  const display = format ? format(value) : String(value);
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, color: "#ccc" }}>
+        <span>{label}</span>
+        <span style={{ color: "#fff", fontWeight: 500 }}>{display}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        style={{ width: "100%", accentColor: "#A78BFA" }}
+      />
+    </div>
+  );
+}
+
+// --- Gear icon ---
+
+function GearIcon({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      style={{
+        position: "fixed",
+        top: 16,
+        right: 16,
+        zIndex: 50,
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        opacity: 0.3,
+        transition: "opacity 0.2s",
+        padding: 8,
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.8")}
+      onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.3")}
+    >
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      </svg>
+    </button>
+  );
+}
+
+// --- Main App ---
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [settings, setSettings] = useState<Settings>(loadSettings);
+  const settingsRef = useRef(settings);
+
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
+  const handleChange = useCallback((s: Settings) => {
+    setSettings(s);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
     let shapes: Shape[] = [];
-    let framesSinceSpawn = 60; // spawn first one immediately
+    let framesSinceSpawn = 60;
     let animId: number;
 
     function resize() {
@@ -155,20 +377,20 @@ export default function App() {
     window.addEventListener("resize", resize);
 
     function tick() {
+      const s = settingsRef.current;
       const w = window.innerWidth;
       const h = window.innerHeight;
 
       // Spawn new shapes
       framesSinceSpawn++;
-      const aliveCount = shapes.filter((s) => s.phase !== "fadeout").length;
-      if (aliveCount < 4) {
-        // Immediately spawn when too few shapes (one per fade-in cycle)
+      const aliveCount = shapes.filter((sh) => sh.phase !== "fadeout").length;
+      if (aliveCount < s.shapeCount - 1) {
         if (framesSinceSpawn >= 60) {
-          shapes.push(createShape(w, h));
+          shapes.push(createShape(w, h, s));
           framesSinceSpawn = 0;
         }
-      } else if (framesSinceSpawn >= SPAWN_INTERVAL && aliveCount < MAX_SHAPES) {
-        shapes.push(createShape(w, h));
+      } else if (framesSinceSpawn >= SPAWN_INTERVAL && aliveCount < s.shapeCount) {
+        shapes.push(createShape(w, h, s));
         framesSinceSpawn = 0;
       }
 
@@ -178,45 +400,30 @@ export default function App() {
 
       // Update & draw
       for (const shape of shapes) {
-        // Move
         shape.x += shape.vx;
         shape.y += shape.vy;
         shape.rotation += shape.rotationSpeed;
         shape.life++;
 
-        // Bounce off edges (with horizontal padding and top bias)
+        // Bounce off edges
         const margin = shape.size / 2;
-        const padX = w * H_PADDING;
+        const padX = w * s.hPadding;
         const minX = padX + margin;
         const maxX = w - padX - margin;
-        const minY = h * TOP_BIAS + margin;
+        const minY = h * s.topBias + margin;
         const maxY = h - margin;
 
-        if (shape.x < minX) {
-          shape.x = minX;
-          shape.vx *= -1;
-        }
-        if (shape.x > maxX) {
-          shape.x = maxX;
-          shape.vx *= -1;
-        }
-        if (shape.y < minY) {
-          shape.y = minY;
-          shape.vy *= -1;
-        }
-        if (shape.y > maxY) {
-          shape.y = maxY;
-          shape.vy *= -1;
-        }
+        if (shape.x < minX) { shape.x = minX; shape.vx *= -1; }
+        if (shape.x > maxX) { shape.x = maxX; shape.vx *= -1; }
+        if (shape.y < minY) { shape.y = minY; shape.vy *= -1; }
+        if (shape.y > maxY) { shape.y = maxY; shape.vy *= -1; }
 
         // Lifecycle
         if (shape.phase === "fadein") {
           shape.opacity = Math.min(1, shape.opacity + 1 / FADE_FRAMES);
           if (shape.opacity >= 1) shape.phase = "alive";
         } else if (shape.phase === "alive") {
-          if (shape.life >= shape.maxLife - FADE_FRAMES) {
-            shape.phase = "fadeout";
-          }
+          if (shape.life >= shape.maxLife - FADE_FRAMES) shape.phase = "fadeout";
         } else if (shape.phase === "fadeout") {
           shape.opacity = Math.max(0, shape.opacity - 1 / FADE_FRAMES);
         }
@@ -224,9 +431,7 @@ export default function App() {
         drawShape(ctx, shape);
       }
 
-      // Remove dead shapes
-      shapes = shapes.filter((s) => s.opacity > 0);
-
+      shapes = shapes.filter((sh) => sh.opacity > 0);
       animId = requestAnimationFrame(tick);
     }
 
@@ -239,9 +444,19 @@ export default function App() {
   }, []);
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{ display: "block", width: "100%", height: "100%" }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        style={{ display: "block", width: "100%", height: "100%" }}
+      />
+      {!menuOpen && <GearIcon onClick={() => setMenuOpen(true)} />}
+      {menuOpen && (
+        <SettingsMenu
+          settings={settings}
+          onChange={handleChange}
+          onClose={() => setMenuOpen(false)}
+        />
+      )}
+    </>
   );
 }
