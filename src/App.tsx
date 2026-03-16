@@ -37,15 +37,19 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+const H_PADDING = 0.15; // 15% horizontal padding
+const TOP_BIAS = 0.4; // shapes spawn in the bottom 60% of the screen
+
 function createShape(w: number, h: number): Shape {
   const size = random(40, 120);
-  const speed = random(0.3, 1.2);
+  const speed = random(0.3, 2.5);
   const angle = random(0, Math.PI * 2);
+  const padX = w * H_PADDING;
 
   return {
     type: pick(SHAPE_TYPES),
-    x: random(size, w - size),
-    y: random(size, h - size),
+    x: random(padX + size, w - padX - size),
+    y: random(h * TOP_BIAS + size, h - size),
     size,
     color: pick(COLORS),
     vx: Math.cos(angle) * speed,
@@ -55,7 +59,7 @@ function createShape(w: number, h: number): Shape {
     opacity: 0,
     phase: "fadein",
     life: 0,
-    maxLife: random(600, 1200), // frames (~10-20s at 60fps)
+    maxLife: random(1800, 3600), // frames (~30-60s at 60fps)
   };
 }
 
@@ -120,7 +124,7 @@ function drawShape(
 
 const FADE_FRAMES = 120; // 2 seconds
 const MAX_SHAPES = 5;
-const SPAWN_INTERVAL = 180; // new shape every ~3s
+const SPAWN_INTERVAL = 1800; // new shape every ~30s
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -129,7 +133,8 @@ export default function App() {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
     let shapes: Shape[] = [];
-    let framesSinceSpawn = SPAWN_INTERVAL; // spawn immediately
+    let framesSinceSpawn = SPAWN_INTERVAL; // spawn first one immediately
+    let initialSpawns = 3; // spawn 3 shapes quickly at start
     let animId: number;
 
     function resize() {
@@ -148,12 +153,14 @@ export default function App() {
 
       // Spawn new shapes
       framesSinceSpawn++;
+      const interval = initialSpawns > 0 ? 120 : SPAWN_INTERVAL; // first few spawn every 2s
       if (
-        framesSinceSpawn >= SPAWN_INTERVAL &&
+        framesSinceSpawn >= interval &&
         shapes.filter((s) => s.phase !== "fadeout").length < MAX_SHAPES
       ) {
         shapes.push(createShape(w, h));
         framesSinceSpawn = 0;
+        if (initialSpawns > 0) initialSpawns--;
       }
 
       // Clear
@@ -168,22 +175,28 @@ export default function App() {
         shape.rotation += shape.rotationSpeed;
         shape.life++;
 
-        // Bounce off edges
+        // Bounce off edges (with horizontal padding and top bias)
         const margin = shape.size / 2;
-        if (shape.x < margin) {
-          shape.x = margin;
+        const padX = w * H_PADDING;
+        const minX = padX + margin;
+        const maxX = w - padX - margin;
+        const minY = h * TOP_BIAS + margin;
+        const maxY = h - margin;
+
+        if (shape.x < minX) {
+          shape.x = minX;
           shape.vx *= -1;
         }
-        if (shape.x > w - margin) {
-          shape.x = w - margin;
+        if (shape.x > maxX) {
+          shape.x = maxX;
           shape.vx *= -1;
         }
-        if (shape.y < margin) {
-          shape.y = margin;
+        if (shape.y < minY) {
+          shape.y = minY;
           shape.vy *= -1;
         }
-        if (shape.y > h - margin) {
-          shape.y = h - margin;
+        if (shape.y > maxY) {
+          shape.y = maxY;
           shape.vy *= -1;
         }
 
