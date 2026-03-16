@@ -59,7 +59,7 @@ function createShape(w: number, h: number): Shape {
     opacity: 0,
     phase: "fadein",
     life: 0,
-    maxLife: random(1800, 3600), // frames (~30-60s at 60fps)
+    maxLife: random(1200, 3600), // frames (~20-60s at 60fps)
   };
 }
 
@@ -134,7 +134,7 @@ export default function App() {
     const ctx = canvas.getContext("2d")!;
     let shapes: Shape[] = [];
     let framesSinceSpawn = SPAWN_INTERVAL; // spawn first one immediately
-    let initialSpawns = 3; // spawn 3 shapes quickly at start
+    let initialSpawns = 5; // spawn 5 shapes quickly at start
     let animId: number;
 
     function resize() {
@@ -153,11 +153,9 @@ export default function App() {
 
       // Spawn new shapes
       framesSinceSpawn++;
-      const interval = initialSpawns > 0 ? 120 : SPAWN_INTERVAL; // first few spawn every 2s
-      if (
-        framesSinceSpawn >= interval &&
-        shapes.filter((s) => s.phase !== "fadeout").length < MAX_SHAPES
-      ) {
+      const aliveCount = shapes.filter((s) => s.phase !== "fadeout").length;
+      const interval = initialSpawns > 0 ? 90 : aliveCount < 3 ? 300 : SPAWN_INTERVAL;
+      if (framesSinceSpawn >= interval && aliveCount < MAX_SHAPES) {
         shapes.push(createShape(w, h));
         framesSinceSpawn = 0;
         if (initialSpawns > 0) initialSpawns--;
