@@ -16,6 +16,8 @@ interface Shape {
   maxLife: number;
 }
 
+type BgType = "black" | "space" | "rain";
+
 export interface Settings {
   shapeCount: number;
   sizeMin: number;
@@ -24,6 +26,7 @@ export interface Settings {
   speedMax: number;
   topBias: number;
   hPadding: number;
+  background: BgType;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -34,7 +37,79 @@ const DEFAULT_SETTINGS: Settings = {
   speedMax: 2.5,
   topBias: 0.4,
   hPadding: 0.15,
+  background: "black",
 };
+
+// --- Background particles ---
+
+interface Star {
+  x: number;
+  y: number;
+  size: number;
+  brightness: number;
+  twinkleSpeed: number;
+  twinklePhase: number;
+}
+
+interface RainDrop {
+  x: number;
+  y: number;
+  speed: number;
+  length: number;
+  opacity: number;
+}
+
+function createStars(w: number, h: number, count: number): Star[] {
+  return Array.from({ length: count }, () => ({
+    x: Math.random() * w,
+    y: Math.random() * h,
+    size: random(0.5, 2.5),
+    brightness: random(0.3, 1),
+    twinkleSpeed: random(0.005, 0.02),
+    twinklePhase: random(0, Math.PI * 2),
+  }));
+}
+
+function createRainDrops(w: number, count: number): RainDrop[] {
+  return Array.from({ length: count }, () => ({
+    x: Math.random() * w,
+    y: Math.random() * -500,
+    speed: random(2, 6),
+    length: random(10, 30),
+    opacity: random(0.1, 0.4),
+  }));
+}
+
+function drawStars(ctx: CanvasRenderingContext2D, stars: Star[], frame: number) {
+  for (const star of stars) {
+    const alpha = star.brightness * (0.5 + 0.5 * Math.sin(frame * star.twinkleSpeed + star.twinklePhase));
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function updateAndDrawRain(ctx: CanvasRenderingContext2D, drops: RainDrop[], w: number, h: number) {
+  ctx.lineCap = "round";
+  for (const drop of drops) {
+    drop.y += drop.speed;
+    if (drop.y > h + drop.length) {
+      drop.y = -drop.length;
+      drop.x = Math.random() * w;
+    }
+    ctx.globalAlpha = drop.opacity;
+    ctx.strokeStyle = "#6BA3D6";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(drop.x, drop.y);
+    ctx.lineTo(drop.x, drop.y + drop.length);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
 
 const STORAGE_KEY = "forme-settings";
 
@@ -206,6 +281,32 @@ function SettingsMenu({
         </button>
       </div>
 
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ color: "#ccc", marginBottom: 8 }}>Sfondo</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {(["black", "space", "rain"] as const).map((bg) => (
+            <button
+              key={bg}
+              onClick={() => update({ background: bg })}
+              style={{
+                flex: 1,
+                padding: "8px 0",
+                borderRadius: 6,
+                border: settings.background === bg ? "2px solid #A78BFA" : "2px solid #333",
+                background: settings.background === bg ? "rgba(167, 139, 250, 0.15)" : "rgba(255,255,255,0.05)",
+                color: settings.background === bg ? "#fff" : "#999",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+                textTransform: "capitalize",
+              }}
+            >
+              {bg === "black" ? "Nero" : bg === "space" ? "Spazio" : "Pioggia"}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <SliderRow
         label="Numero forme"
         value={settings.shapeCount}
@@ -365,12 +466,27 @@ export default function App() {
     let shapes: Shape[] = [];
     let framesSinceSpawn = 60;
     let animId: number;
+    let frame = 0;
+    let stars: Star[] = [];
+    let rainDrops: RainDrop[] = [];
+    let currentBg: BgType = "black";
+
+    function initBg(w: number, h: number, bg: BgType) {
+      if (bg === "space" && (currentBg !== "space" || stars.length === 0)) {
+        stars = createStars(w, h, 200);
+      }
+      if (bg === "rain" && (currentBg !== "rain" || rainDrops.length === 0)) {
+        rainDrops = createRainDrops(w, 150);
+      }
+      currentBg = bg;
+    }
 
     function resize() {
       const dpr = window.devicePixelRatio || 1;
       canvas.width = window.innerWidth * dpr;
       canvas.height = window.innerHeight * dpr;
       ctx.scale(dpr, dpr);
+      initBg(window.innerWidth, window.innerHeight, settingsRef.current.background);
     }
 
     resize();
@@ -380,6 +496,12 @@ export default function App() {
       const s = settingsRef.current;
       const w = window.innerWidth;
       const h = window.innerHeight;
+      frame++;
+
+      // Re-init bg particles if setting changed
+      if (s.background !== currentBg) {
+        initBg(w, h, s.background);
+      }
 
       // Spawn new shapes
       framesSinceSpawn++;
@@ -397,6 +519,11 @@ export default function App() {
       // Clear
       ctx.fillStyle = "#000";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw background
+      ctx.shadowBlur = 0;
+      if (s.background === "space") drawStars(ctx, stars, frame);
+      if (s.background === "rain") updateAndDrawRain(ctx, rainDrops, w, h);
 
       // Update & draw
       for (const shape of shapes) {
