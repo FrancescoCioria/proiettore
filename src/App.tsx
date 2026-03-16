@@ -460,6 +460,23 @@ export default function App() {
     setSettings(s);
   }, []);
 
+  // Request fullscreen on first user interaction
+  useEffect(() => {
+    function requestFs() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+      document.removeEventListener("click", requestFs);
+      document.removeEventListener("touchstart", requestFs);
+    }
+    document.addEventListener("click", requestFs, { once: true });
+    document.addEventListener("touchstart", requestFs, { once: true });
+    return () => {
+      document.removeEventListener("click", requestFs);
+      document.removeEventListener("touchstart", requestFs);
+    };
+  }, []);
+
   useEffect(() => {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
