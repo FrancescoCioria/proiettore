@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { setMusic } from "./music";
 
 interface Shape {
   type: "circle" | "triangle" | "square" | "star";
@@ -19,11 +20,6 @@ interface Shape {
 type BgType = "black" | "space" | "rain";
 type Mode = "classic" | "explode";
 type MusicType = "off" | "piano" | "space";
-
-const SPOTIFY_PLAYLISTS: Record<Exclude<MusicType, "off">, string> = {
-  piano: "3ttT3EIioY5KlSBI3l4u5H",
-  space: "3kcwOPdC0w6A5uF93SSlOm",
-};
 
 export interface Settings {
   mode: Mode;
@@ -672,6 +668,11 @@ export default function App() {
     setSettings(s);
   }, []);
 
+  // Music
+  useEffect(() => {
+    setMusic(settings.music);
+  }, [settings.music]);
+
   // Keyboard shortcuts
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -1059,28 +1060,6 @@ export default function App() {
         ref={canvasRef}
         style={{ display: "block", width: "100%", height: "100%" }}
       />
-      {settings.music !== "off" && (
-        <iframe
-          key={settings.music}
-          src={`https://open.spotify.com/embed/playlist/${SPOTIFY_PLAYLISTS[settings.music]}?utm_source=generator&theme=0`}
-          width="300"
-          height="80"
-          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-          loading="lazy"
-          style={{
-            position: "fixed",
-            bottom: 16,
-            left: 16,
-            border: "none",
-            borderRadius: 12,
-            zIndex: 40,
-            opacity: 0.7,
-            transition: "opacity 0.2s",
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-          onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.7")}
-        />
-      )}
       {!menuOpen && <GearIcon onClick={() => setMenuOpen(true)} />}
       {menuOpen && (
         <SettingsMenu
