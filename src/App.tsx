@@ -573,6 +573,16 @@ export default function App() {
     setSettings(s);
   }, []);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuOpen(false);
+      if (e.key === "s" || e.key === "S") setMenuOpen((v) => !v);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // Request fullscreen on first user interaction
   useEffect(() => {
     function requestFs() {
