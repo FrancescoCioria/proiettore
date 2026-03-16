@@ -17,8 +17,10 @@ interface Shape {
 }
 
 type BgType = "black" | "space" | "rain";
+type Mode = "classic" | "explode";
 
 export interface Settings {
+  mode: Mode;
   shapeCount: number;
   sizeMin: number;
   sizeMax: number;
@@ -30,6 +32,7 @@ export interface Settings {
 }
 
 const DEFAULT_SETTINGS: Settings = {
+  mode: "classic",
   shapeCount: 5,
   sizeMin: 40,
   sizeMax: 120,
@@ -226,6 +229,14 @@ function drawShape(ctx: CanvasRenderingContext2D, shape: Shape) {
 
 const FADE_FRAMES = 120;
 const SPAWN_INTERVAL = 1800;
+const EXPLODE_COUNT = 12;
+const SINGLE_DURATION = 300;
+const EXPLODE_DURATION = 60;
+const SCATTER_DURATION = 420;
+const REUNITE_DURATION = 120;
+const PAUSE_DURATION = 60;
+
+type ExplodePhase = "single" | "exploding" | "scattered" | "reuniting" | "pause";
 
 // --- Settings Menu ---
 
@@ -281,31 +292,21 @@ function SettingsMenu({
         </button>
       </div>
 
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ color: "#ccc", marginBottom: 8 }}>Sfondo</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {(["black", "space", "rain"] as const).map((bg) => (
-            <button
-              key={bg}
-              onClick={() => update({ background: bg })}
-              style={{
-                flex: 1,
-                padding: "8px 0",
-                borderRadius: 6,
-                border: settings.background === bg ? "2px solid #A78BFA" : "2px solid #333",
-                background: settings.background === bg ? "rgba(167, 139, 250, 0.15)" : "rgba(255,255,255,0.05)",
-                color: settings.background === bg ? "#fff" : "#999",
-                fontSize: 13,
-                fontWeight: 500,
-                cursor: "pointer",
-                textTransform: "capitalize",
-              }}
-            >
-              {bg === "black" ? "Nero" : bg === "space" ? "Spazio" : "Pioggia"}
-            </button>
-          ))}
-        </div>
-      </div>
+      <OptionRow
+        label="Modalità"
+        options={["classic", "explode"] as const}
+        value={settings.mode}
+        labels={{ classic: "Classica", explode: "Esplosione" }}
+        onChange={(m) => update({ mode: m })}
+      />
+
+      <OptionRow
+        label="Sfondo"
+        options={["black", "space", "rain"] as const}
+        value={settings.background}
+        labels={{ black: "Nero", space: "Spazio", rain: "Pioggia" }}
+        onChange={(bg) => update({ background: bg })}
+      />
 
       <SliderRow
         label="Numero forme"
@@ -370,6 +371,47 @@ function SettingsMenu({
           format={(v) => `${v}%`}
           onChange={(v) => update({ hPadding: v / 100 })}
         />
+      </div>
+    </div>
+  );
+}
+
+function OptionRow<T extends string>({
+  label,
+  options,
+  value,
+  labels,
+  onChange,
+}: {
+  label: string;
+  options: readonly T[];
+  value: T;
+  labels: Record<T, string>;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ color: "#ccc", marginBottom: 8 }}>{label}</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {options.map((opt) => (
+          <button
+            key={opt}
+            onClick={() => onChange(opt)}
+            style={{
+              flex: 1,
+              padding: "8px 0",
+              borderRadius: 6,
+              border: value === opt ? "2px solid #A78BFA" : "2px solid #333",
+              background: value === opt ? "rgba(167, 139, 250, 0.15)" : "rgba(255,255,255,0.05)",
+              color: value === opt ? "#fff" : "#999",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+            }}
+          >
+            {labels[opt]}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -488,6 +530,36 @@ export default function App() {
     let rainDrops: RainDrop[] = [];
     let currentBg: BgType = "black";
 
+    // Explode mode state
+    let explodePhase: ExplodePhase = "single";
+    let explodeTimer = 0;
+    let explodeShapes: Shape[] = [];
+    let explodeTarget = { x: 0, y: 0 };
+    let currentMode: Mode = "classic";
+
+    function initExplodeMode(w: number, h: number, s: Settings) {
+      explodePhase = "single";
+      explodeTimer = 0;
+      const size = random(s.sizeMin, s.sizeMax);
+      const cx = w / 2;
+      const cy = h * 0.55;
+      explodeShapes = [{
+        type: pick(SHAPE_TYPES),
+        x: cx,
+        y: cy,
+        size,
+        color: nextColor(),
+        vx: random(-1, 1),
+        vy: random(-0.5, 0.5),
+        rotation: 0,
+        rotationSpeed: random(-0.005, 0.005),
+        opacity: 0,
+        phase: "fadein",
+        life: 0,
+        maxLife: 99999,
+      }];
+    }
+
     function initBg(w: number, h: number, bg: BgType) {
       if (bg === "space" && (currentBg !== "space" || stars.length === 0)) {
         stars = createStars(w, h, 200);
@@ -509,17 +581,7 @@ export default function App() {
     resize();
     window.addEventListener("resize", resize);
 
-    function tick() {
-      const s = settingsRef.current;
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      frame++;
-
-      // Re-init bg particles if setting changed
-      if (s.background !== currentBg) {
-        initBg(w, h, s.background);
-      }
-
+    function tickClassic(s: Settings, w: number, h: number) {
       // Spawn new shapes
       framesSinceSpawn++;
       const aliveCount = shapes.filter((sh) => sh.phase !== "fadeout").length;
@@ -533,15 +595,6 @@ export default function App() {
         framesSinceSpawn = 0;
       }
 
-      // Clear
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Draw background
-      ctx.shadowBlur = 0;
-      if (s.background === "space") drawStars(ctx, stars, frame);
-      if (s.background === "rain") updateAndDrawRain(ctx, rainDrops, w, h);
-
       // Update & draw
       for (const shape of shapes) {
         shape.x += shape.vx;
@@ -549,18 +602,7 @@ export default function App() {
         shape.rotation += shape.rotationSpeed;
         shape.life++;
 
-        // Bounce off edges
-        const margin = shape.size / 2;
-        const padX = w * s.hPadding;
-        const minX = padX + margin;
-        const maxX = w - padX - margin;
-        const minY = h * s.topBias + margin;
-        const maxY = h - margin;
-
-        if (shape.x < minX) { shape.x = minX; shape.vx *= -1; }
-        if (shape.x > maxX) { shape.x = maxX; shape.vx *= -1; }
-        if (shape.y < minY) { shape.y = minY; shape.vy *= -1; }
-        if (shape.y > maxY) { shape.y = maxY; shape.vy *= -1; }
+        bounceShape(shape, w, h, s);
 
         // Lifecycle
         if (shape.phase === "fadein") {
@@ -576,6 +618,197 @@ export default function App() {
       }
 
       shapes = shapes.filter((sh) => sh.opacity > 0);
+    }
+
+    function bounceShape(shape: Shape, w: number, h: number, s: Settings) {
+      const margin = shape.size / 2;
+      const padX = w * s.hPadding;
+      const minX = padX + margin;
+      const maxX = w - padX - margin;
+      const minY = h * s.topBias + margin;
+      const maxY = h - margin;
+
+      if (shape.x < minX) { shape.x = minX; shape.vx *= -1; }
+      if (shape.x > maxX) { shape.x = maxX; shape.vx *= -1; }
+      if (shape.y < minY) { shape.y = minY; shape.vy *= -1; }
+      if (shape.y > maxY) { shape.y = maxY; shape.vy *= -1; }
+    }
+
+    function tickExplode(s: Settings, w: number, h: number) {
+      explodeTimer++;
+
+      if (explodePhase === "single") {
+        const shape = explodeShapes[0];
+        if (shape) {
+          // Fade in
+          if (shape.phase === "fadein") {
+            shape.opacity = Math.min(1, shape.opacity + 1 / FADE_FRAMES);
+            if (shape.opacity >= 1) shape.phase = "alive";
+          }
+          shape.x += shape.vx;
+          shape.y += shape.vy;
+          shape.rotation += shape.rotationSpeed;
+          bounceShape(shape, w, h, s);
+          drawShape(ctx, shape);
+        }
+
+        if (explodeTimer >= SINGLE_DURATION) {
+          // Explode!
+          const src = explodeShapes[0];
+          const shapeType = src.type;
+          const shapeColor = src.color;
+          const pieceSize = src.size * 0.5;
+
+          explodeShapes = Array.from({ length: EXPLODE_COUNT }, () => {
+            const angle = random(0, Math.PI * 2);
+            const speed = random(3, 8);
+            return {
+              type: shapeType,
+              x: src.x,
+              y: src.y,
+              size: pieceSize,
+              color: shapeColor,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              rotation: random(0, Math.PI * 2),
+              rotationSpeed: random(-0.02, 0.02),
+              opacity: 1,
+              phase: "alive" as const,
+              life: 0,
+              maxLife: 99999,
+            };
+          });
+          explodePhase = "exploding";
+          explodeTimer = 0;
+        }
+      } else if (explodePhase === "exploding") {
+        for (const shape of explodeShapes) {
+          shape.x += shape.vx;
+          shape.y += shape.vy;
+          shape.rotation += shape.rotationSpeed;
+          // Decelerate
+          shape.vx *= 0.96;
+          shape.vy *= 0.96;
+          bounceShape(shape, w, h, s);
+          drawShape(ctx, shape);
+        }
+
+        if (explodeTimer >= EXPLODE_DURATION) {
+          // Give each piece a gentle velocity for scattering
+          for (const shape of explodeShapes) {
+            const speed = random(0.5, 2);
+            const angle = random(0, Math.PI * 2);
+            shape.vx = Math.cos(angle) * speed;
+            shape.vy = Math.sin(angle) * speed;
+          }
+          explodePhase = "scattered";
+          explodeTimer = 0;
+        }
+      } else if (explodePhase === "scattered") {
+        for (const shape of explodeShapes) {
+          shape.x += shape.vx;
+          shape.y += shape.vy;
+          shape.rotation += shape.rotationSpeed;
+          bounceShape(shape, w, h, s);
+          drawShape(ctx, shape);
+        }
+
+        if (explodeTimer >= SCATTER_DURATION) {
+          // Pick a reunion target
+          explodeTarget = { x: w / 2 + random(-w * 0.2, w * 0.2), y: h * 0.5 + random(-h * 0.15, h * 0.15) };
+          explodePhase = "reuniting";
+          explodeTimer = 0;
+        }
+      } else if (explodePhase === "reuniting") {
+        const progress = Math.min(1, explodeTimer / REUNITE_DURATION);
+        // Ease-in-out
+        const ease = progress < 0.5
+          ? 2 * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+        for (const shape of explodeShapes) {
+          // Lerp toward target
+          const dx = explodeTarget.x - shape.x;
+          const dy = explodeTarget.y - shape.y;
+          shape.x += dx * ease * 0.08;
+          shape.y += dy * ease * 0.08;
+          shape.rotation += shape.rotationSpeed;
+
+          // Shrink slightly as they converge at the end
+          if (progress > 0.7) {
+            shape.opacity = Math.max(0, 1 - (progress - 0.7) / 0.3);
+          }
+
+          drawShape(ctx, shape);
+        }
+
+        if (explodeTimer >= REUNITE_DURATION) {
+          explodePhase = "pause";
+          explodeTimer = 0;
+        }
+      } else if (explodePhase === "pause") {
+        if (explodeTimer >= PAUSE_DURATION) {
+          // Restart cycle with a new shape
+          const size = random(s.sizeMin, s.sizeMax);
+          explodeShapes = [{
+            type: pick(SHAPE_TYPES),
+            x: explodeTarget.x,
+            y: explodeTarget.y,
+            size,
+            color: nextColor(),
+            vx: random(-1, 1),
+            vy: random(-0.5, 0.5),
+            rotation: 0,
+            rotationSpeed: random(-0.005, 0.005),
+            opacity: 0,
+            phase: "fadein",
+            life: 0,
+            maxLife: 99999,
+          }];
+          explodePhase = "single";
+          explodeTimer = 0;
+        }
+      }
+    }
+
+    function tick() {
+      const s = settingsRef.current;
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      frame++;
+
+      // Handle mode switch
+      if (s.mode !== currentMode) {
+        currentMode = s.mode;
+        if (s.mode === "explode") {
+          initExplodeMode(w, h, s);
+        } else {
+          shapes = [];
+          framesSinceSpawn = 60;
+          explodeShapes = [];
+        }
+      }
+
+      // Re-init bg particles if setting changed
+      if (s.background !== currentBg) {
+        initBg(w, h, s.background);
+      }
+
+      // Clear
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw background
+      ctx.shadowBlur = 0;
+      if (s.background === "space") drawStars(ctx, stars, frame);
+      if (s.background === "rain") updateAndDrawRain(ctx, rainDrops, w, h);
+
+      if (s.mode === "classic") {
+        tickClassic(s, w, h);
+      } else {
+        tickExplode(s, w, h);
+      }
+
       animId = requestAnimationFrame(tick);
     }
 
