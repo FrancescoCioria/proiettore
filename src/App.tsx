@@ -18,6 +18,12 @@ interface Shape {
 
 type BgType = "black" | "space" | "rain";
 type Mode = "classic" | "explode";
+type MusicType = "off" | "piano" | "space";
+
+const SPOTIFY_PLAYLISTS: Record<Exclude<MusicType, "off">, string> = {
+  piano: "3ttT3EIioY5KlSBI3l4u5H",
+  space: "3kcwOPdC0w6A5uF93SSlOm",
+};
 
 export interface Settings {
   mode: Mode;
@@ -35,6 +41,7 @@ export interface Settings {
   explodeSpeed: number;
   // Shared
   collision: boolean;
+  music: MusicType;
   topBias: number;
   hPadding: number;
   background: BgType;
@@ -53,6 +60,7 @@ const DEFAULT_SETTINGS: Settings = {
   explodeScatterMax: 60,
   explodeSpeed: 1.5,
   collision: false,
+  music: "off",
   topBias: 0.4,
   hPadding: 0.15,
   background: "black",
@@ -127,6 +135,89 @@ function updateAndDrawRain(ctx: CanvasRenderingContext2D, drops: RainDrop[], w: 
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
+}
+
+// --- Window border ---
+
+interface BorderParticle {
+  offset: number; // 0..1 position along perimeter
+  speed: number;
+  size: number;
+  hue: number;
+}
+
+function createBorderParticles(count: number): BorderParticle[] {
+  return Array.from({ length: count }, () => ({
+    offset: Math.random(),
+    speed: random(0.0003, 0.001),
+    size: random(1.5, 4),
+    hue: random(200, 280),
+  }));
+}
+
+function drawWindowBorder(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  s: Settings,
+  frame: number,
+  particles: BorderParticle[],
+) {
+  const padX = w * s.hPadding;
+  const top = h * s.topBias;
+  const left = padX;
+  const right = w - padX;
+  const bottom = h;
+  const bw = right - left;
+  const bh = bottom - top;
+  const perimeter = 2 * (bw + bh);
+
+  // Convert perimeter offset (0..1) to x,y
+  function perimeterToXY(t: number): [number, number] {
+    const d = ((t % 1) + 1) % 1 * perimeter;
+    if (d < bw) return [left + d, top]; // top edge
+    if (d < bw + bh) return [right, top + (d - bw)]; // right edge
+    if (d < 2 * bw + bh) return [right - (d - bw - bh), bottom]; // bottom edge
+    return [left, bottom - (d - 2 * bw - bh)]; // left edge
+  }
+
+  ctx.save();
+  ctx.shadowBlur = 0;
+
+  // Animated gradient glow along the border
+  const baseAlpha = 0.12 + 0.04 * Math.sin(frame * 0.008);
+  const cornerRadius = 16;
+
+  // Draw the rounded rect border with a subtle nebula glow
+  for (let layer = 3; layer >= 0; layer--) {
+    const spread = layer * 6;
+    const alpha = baseAlpha * (1 - layer * 0.22);
+    const hueShift = Math.sin(frame * 0.003 + layer) * 30;
+
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = `hsl(${240 + hueShift}, 70%, ${60 + layer * 8}%)`;
+    ctx.lineWidth = 2 + spread;
+    ctx.beginPath();
+    ctx.roundRect(left + 0.5, top + 0.5, bw - 1, bh - 1, cornerRadius);
+    ctx.stroke();
+  }
+
+  // Travelling particles along the border
+  for (const p of particles) {
+    p.offset = (p.offset + p.speed) % 1;
+    const [px, py] = perimeterToXY(p.offset);
+    const twinkle = 0.4 + 0.6 * Math.sin(frame * 0.02 + p.offset * Math.PI * 8);
+
+    ctx.globalAlpha = twinkle * 0.7;
+    ctx.fillStyle = `hsl(${p.hue + Math.sin(frame * 0.005) * 20}, 80%, 75%)`;
+    ctx.shadowColor = `hsl(${p.hue}, 90%, 70%)`;
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(px, py, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
 }
 
 const STORAGE_KEY = "forme-settings";
@@ -422,6 +513,14 @@ function SettingsMenu({
         onChange={(v) => update({ collision: v === "on" })}
       />
 
+      <OptionRow
+        label="Musica"
+        options={["off", "piano", "space"] as const}
+        value={settings.music}
+        labels={{ off: "Off", piano: "Piano", space: "Space" }}
+        onChange={(v) => update({ music: v })}
+      />
+
       <div style={{ borderTop: "1px solid #333", margin: "20px 0", paddingTop: 16 }}>
         <span style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, display: "block" }}>Finestra</span>
         <SliderRow
@@ -610,6 +709,7 @@ export default function App() {
     let stars: Star[] = [];
     let rainDrops: RainDrop[] = [];
     let currentBg: BgType = "black";
+    const borderParticles = createBorderParticles(40);
 
     // Explode mode state
     let explodePhase: ExplodePhase = "single";
@@ -931,6 +1031,11 @@ export default function App() {
       if (s.background === "space") drawStars(ctx, stars, frame);
       if (s.background === "rain") updateAndDrawRain(ctx, rainDrops, w, h);
 
+      // Draw window border
+      if (s.topBias > 0 || s.hPadding > 0) {
+        drawWindowBorder(ctx, w, h, s, frame, borderParticles);
+      }
+
       if (s.mode === "classic") {
         tickClassic(s, w, h);
       } else {
@@ -954,6 +1059,28 @@ export default function App() {
         ref={canvasRef}
         style={{ display: "block", width: "100%", height: "100%" }}
       />
+      {settings.music !== "off" && (
+        <iframe
+          key={settings.music}
+          src={`https://open.spotify.com/embed/playlist/${SPOTIFY_PLAYLISTS[settings.music]}?utm_source=generator&theme=0`}
+          width="300"
+          height="80"
+          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+          loading="lazy"
+          style={{
+            position: "fixed",
+            bottom: 16,
+            left: 16,
+            border: "none",
+            borderRadius: 12,
+            zIndex: 40,
+            opacity: 0.7,
+            transition: "opacity 0.2s",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.7")}
+        />
+      )}
       {!menuOpen && <GearIcon onClick={() => setMenuOpen(true)} />}
       {menuOpen && (
         <SettingsMenu
