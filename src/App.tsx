@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { setMusic } from "./music";
+import { initAudio, setMusic } from "./music";
 
 interface Shape {
   type: "circle" | "triangle" | "square" | "star";
@@ -514,7 +514,10 @@ function SettingsMenu({
         options={["off", "piano", "space"] as const}
         value={settings.music}
         labels={{ off: "Off", piano: "Piano", space: "Space" }}
-        onChange={(v) => update({ music: v })}
+        onChange={(v) => {
+          initAudio().then(() => setMusic(v));
+          update({ music: v });
+        }}
       />
 
       <div style={{ borderTop: "1px solid #333", margin: "20px 0", paddingTop: 16 }}>
@@ -668,7 +671,7 @@ export default function App() {
     setSettings(s);
   }, []);
 
-  // Music
+  // Music — sync when settings change (audio must already be unlocked)
   useEffect(() => {
     setMusic(settings.music);
   }, [settings.music]);
@@ -683,20 +686,24 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Request fullscreen on first user interaction
+  // Request fullscreen + unlock audio on first user interaction
   useEffect(() => {
-    function requestFs() {
+    function onFirstInteraction() {
       if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen().catch(() => {});
       }
-      document.removeEventListener("click", requestFs);
-      document.removeEventListener("touchstart", requestFs);
+      initAudio().then(() => {
+        // If music was already selected in settings, start it now
+        setMusic(settingsRef.current.music);
+      });
+      document.removeEventListener("click", onFirstInteraction);
+      document.removeEventListener("touchstart", onFirstInteraction);
     }
-    document.addEventListener("click", requestFs, { once: true });
-    document.addEventListener("touchstart", requestFs, { once: true });
+    document.addEventListener("click", onFirstInteraction, { once: true });
+    document.addEventListener("touchstart", onFirstInteraction, { once: true });
     return () => {
-      document.removeEventListener("click", requestFs);
-      document.removeEventListener("touchstart", requestFs);
+      document.removeEventListener("click", onFirstInteraction);
+      document.removeEventListener("touchstart", onFirstInteraction);
     };
   }, []);
 
