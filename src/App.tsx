@@ -21,11 +21,19 @@ type Mode = "classic" | "explode";
 
 export interface Settings {
   mode: Mode;
+  // Classic mode
   shapeCount: number;
   sizeMin: number;
   sizeMax: number;
   speedMin: number;
   speedMax: number;
+  // Explode mode
+  explodePieces: number;
+  explodeSize: number;
+  explodeScatterMin: number;
+  explodeScatterMax: number;
+  explodeSpeed: number;
+  // Shared
   topBias: number;
   hPadding: number;
   background: BgType;
@@ -38,6 +46,11 @@ const DEFAULT_SETTINGS: Settings = {
   sizeMax: 120,
   speedMin: 0.3,
   speedMax: 2.5,
+  explodePieces: 12,
+  explodeSize: 100,
+  explodeScatterMin: 30,
+  explodeScatterMax: 60,
+  explodeSpeed: 1.5,
   topBias: 0.4,
   hPadding: 0.15,
   background: "black",
@@ -229,11 +242,8 @@ function drawShape(ctx: CanvasRenderingContext2D, shape: Shape) {
 
 const FADE_FRAMES = 120;
 const SPAWN_INTERVAL = 1800;
-const EXPLODE_COUNT = 12;
 const SINGLE_DURATION = 300;
 const EXPLODE_DURATION = 60;
-const SCATTER_DURATION_MIN = 1800; // 30s at 60fps
-const SCATTER_DURATION_MAX = 3600; // 60s at 60fps
 const REUNITE_DURATION = 300;
 const PAUSE_DURATION = 60;
 
@@ -309,48 +319,98 @@ function SettingsMenu({
         onChange={(bg) => update({ background: bg })}
       />
 
-      <SliderRow
-        label="Numero forme"
-        value={settings.shapeCount}
-        min={1}
-        max={10}
-        step={1}
-        onChange={(v) => update({ shapeCount: v })}
-      />
-      <SliderRow
-        label="Dimensione min"
-        value={settings.sizeMin}
-        min={10}
-        max={200}
-        step={5}
-        onChange={(v) => update({ sizeMin: Math.min(v, settings.sizeMax) })}
-      />
-      <SliderRow
-        label="Dimensione max"
-        value={settings.sizeMax}
-        min={10}
-        max={200}
-        step={5}
-        onChange={(v) => update({ sizeMax: Math.max(v, settings.sizeMin) })}
-      />
-      <SliderRow
-        label="Velocit&agrave; min"
-        value={settings.speedMin}
-        min={0.1}
-        max={5}
-        step={0.1}
-        format={(v) => v.toFixed(1)}
-        onChange={(v) => update({ speedMin: Math.min(v, settings.speedMax) })}
-      />
-      <SliderRow
-        label="Velocit&agrave; max"
-        value={settings.speedMax}
-        min={0.1}
-        max={5}
-        step={0.1}
-        format={(v) => v.toFixed(1)}
-        onChange={(v) => update({ speedMax: Math.max(v, settings.speedMin) })}
-      />
+      {settings.mode === "classic" ? (
+        <>
+          <SliderRow
+            label="Numero forme"
+            value={settings.shapeCount}
+            min={1}
+            max={10}
+            step={1}
+            onChange={(v) => update({ shapeCount: v })}
+          />
+          <SliderRow
+            label="Dimensione min"
+            value={settings.sizeMin}
+            min={10}
+            max={200}
+            step={5}
+            onChange={(v) => update({ sizeMin: Math.min(v, settings.sizeMax) })}
+          />
+          <SliderRow
+            label="Dimensione max"
+            value={settings.sizeMax}
+            min={10}
+            max={200}
+            step={5}
+            onChange={(v) => update({ sizeMax: Math.max(v, settings.sizeMin) })}
+          />
+          <SliderRow
+            label="Velocit&agrave; min"
+            value={settings.speedMin}
+            min={0.1}
+            max={5}
+            step={0.1}
+            format={(v) => v.toFixed(1)}
+            onChange={(v) => update({ speedMin: Math.min(v, settings.speedMax) })}
+          />
+          <SliderRow
+            label="Velocit&agrave; max"
+            value={settings.speedMax}
+            min={0.1}
+            max={5}
+            step={0.1}
+            format={(v) => v.toFixed(1)}
+            onChange={(v) => update({ speedMax: Math.max(v, settings.speedMin) })}
+          />
+        </>
+      ) : (
+        <>
+          <SliderRow
+            label="Numero pezzi"
+            value={settings.explodePieces}
+            min={4}
+            max={30}
+            step={1}
+            onChange={(v) => update({ explodePieces: v })}
+          />
+          <SliderRow
+            label="Dimensione forma"
+            value={settings.explodeSize}
+            min={40}
+            max={200}
+            step={5}
+            onChange={(v) => update({ explodeSize: v })}
+          />
+          <SliderRow
+            label="Velocit&agrave; pezzi"
+            value={settings.explodeSpeed}
+            min={0.3}
+            max={4}
+            step={0.1}
+            format={(v) => v.toFixed(1)}
+            onChange={(v) => update({ explodeSpeed: v })}
+          />
+          <SliderRow
+            label="Durata esplosione min"
+            value={settings.explodeScatterMin}
+            min={10}
+            max={120}
+            step={5}
+            format={(v) => `${v}s`}
+            onChange={(v) => update({ explodeScatterMin: Math.min(v, settings.explodeScatterMax) })}
+          />
+          <SliderRow
+            label="Durata esplosione max"
+            value={settings.explodeScatterMax}
+            min={10}
+            max={120}
+            step={5}
+            format={(v) => `${v}s`}
+            onChange={(v) => update({ explodeScatterMax: Math.max(v, settings.explodeScatterMin) })}
+          />
+        </>
+      )}
 
       <div style={{ borderTop: "1px solid #333", margin: "20px 0", paddingTop: 16 }}>
         <span style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, display: "block" }}>Finestra</span>
@@ -542,17 +602,16 @@ export default function App() {
     function initExplodeMode(w: number, h: number, s: Settings) {
       explodePhase = "single";
       explodeTimer = 0;
-      const size = random(s.sizeMin, s.sizeMax);
       const cx = w / 2;
       const cy = h * 0.55;
       explodeShapes = [{
         type: pick(SHAPE_TYPES),
         x: cx,
         y: cy,
-        size,
+        size: s.explodeSize,
         color: nextColor(),
-        vx: random(-1, 1),
-        vy: random(-0.5, 0.5),
+        vx: random(-0.5, 0.5),
+        vy: random(-0.3, 0.3),
         rotation: 0,
         rotationSpeed: random(-0.005, 0.005),
         opacity: 0,
@@ -661,7 +720,7 @@ export default function App() {
           const shapeColor = src.color;
           const pieceSize = src.size * 0.5;
 
-          explodeShapes = Array.from({ length: EXPLODE_COUNT }, () => {
+          explodeShapes = Array.from({ length: s.explodePieces }, () => {
             const angle = random(0, Math.PI * 2);
             const speed = random(3, 8);
             return {
@@ -698,14 +757,14 @@ export default function App() {
         if (explodeTimer >= EXPLODE_DURATION) {
           // Give each piece a gentle velocity for scattering
           for (const shape of explodeShapes) {
-            const speed = random(0.5, 2);
+            const speed = random(s.explodeSpeed * 0.4, s.explodeSpeed * 1.5);
             const angle = random(0, Math.PI * 2);
             shape.vx = Math.cos(angle) * speed;
             shape.vy = Math.sin(angle) * speed;
           }
           explodePhase = "scattered";
           explodeTimer = 0;
-          scatterDuration = Math.round(random(SCATTER_DURATION_MIN, SCATTER_DURATION_MAX));
+          scatterDuration = Math.round(random(s.explodeScatterMin * 60, s.explodeScatterMax * 60));
         }
       } else if (explodePhase === "scattered") {
         for (const shape of explodeShapes) {
@@ -752,15 +811,14 @@ export default function App() {
       } else if (explodePhase === "pause") {
         if (explodeTimer >= PAUSE_DURATION) {
           // Restart cycle with a new shape
-          const size = random(s.sizeMin, s.sizeMax);
           explodeShapes = [{
             type: pick(SHAPE_TYPES),
             x: explodeTarget.x,
             y: explodeTarget.y,
-            size,
+            size: s.explodeSize,
             color: nextColor(),
-            vx: random(-1, 1),
-            vy: random(-0.5, 0.5),
+            vx: random(-0.5, 0.5),
+            vy: random(-0.3, 0.3),
             rotation: 0,
             rotationSpeed: random(-0.005, 0.005),
             opacity: 0,
