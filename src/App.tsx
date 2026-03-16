@@ -40,6 +40,14 @@ function pick<T>(arr: T[]): T {
 const H_PADDING = 0.15; // 15% horizontal padding
 const TOP_BIAS = 0.4; // shapes spawn in the bottom 60% of the screen
 
+let colorIndex = 0;
+
+function nextColor(): string {
+  const color = COLORS[colorIndex % COLORS.length];
+  colorIndex++;
+  return color;
+}
+
 function createShape(w: number, h: number): Shape {
   const size = random(40, 120);
   const speed = random(0.3, 2.5);
@@ -51,7 +59,7 @@ function createShape(w: number, h: number): Shape {
     x: random(padX + size, w - padX - size),
     y: random(h * TOP_BIAS + size, h - size),
     size,
-    color: pick(COLORS),
+    color: nextColor(),
     vx: Math.cos(angle) * speed,
     vy: Math.sin(angle) * speed,
     rotation: random(0, Math.PI * 2),
@@ -133,8 +141,7 @@ export default function App() {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
     let shapes: Shape[] = [];
-    let framesSinceSpawn = SPAWN_INTERVAL; // spawn first one immediately
-    let initialSpawns = 5; // spawn 5 shapes quickly at start
+    let framesSinceSpawn = 60; // spawn first one immediately
     let animId: number;
 
     function resize() {
@@ -154,11 +161,15 @@ export default function App() {
       // Spawn new shapes
       framesSinceSpawn++;
       const aliveCount = shapes.filter((s) => s.phase !== "fadeout").length;
-      const interval = initialSpawns > 0 ? 90 : aliveCount < 3 ? 300 : SPAWN_INTERVAL;
-      if (framesSinceSpawn >= interval && aliveCount < MAX_SHAPES) {
+      if (aliveCount < 4) {
+        // Immediately spawn when too few shapes (one per fade-in cycle)
+        if (framesSinceSpawn >= 60) {
+          shapes.push(createShape(w, h));
+          framesSinceSpawn = 0;
+        }
+      } else if (framesSinceSpawn >= SPAWN_INTERVAL && aliveCount < MAX_SHAPES) {
         shapes.push(createShape(w, h));
         framesSinceSpawn = 0;
-        if (initialSpawns > 0) initialSpawns--;
       }
 
       // Clear
