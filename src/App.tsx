@@ -34,6 +34,7 @@ export interface Settings {
   explodeScatterMax: number;
   explodeSpeed: number;
   // Shared
+  collision: boolean;
   topBias: number;
   hPadding: number;
   background: BgType;
@@ -51,6 +52,7 @@ const DEFAULT_SETTINGS: Settings = {
   explodeScatterMin: 30,
   explodeScatterMax: 60,
   explodeSpeed: 1.5,
+  collision: false,
   topBias: 0.4,
   hPadding: 0.15,
   background: "black",
@@ -412,6 +414,14 @@ function SettingsMenu({
         </>
       )}
 
+      <OptionRow
+        label="Collisione"
+        options={["on", "off"] as const}
+        value={settings.collision ? "on" : "off"}
+        labels={{ on: "Attiva", off: "Disattiva" }}
+        onChange={(v) => update({ collision: v === "on" })}
+      />
+
       <div style={{ borderTop: "1px solid #333", margin: "20px 0", paddingTop: 16 }}>
         <span style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, display: "block" }}>Finestra</span>
         <SliderRow
@@ -678,6 +688,8 @@ export default function App() {
         drawShape(ctx, shape);
       }
 
+      if (s.collision) resolveCollisions(shapes);
+
       shapes = shapes.filter((sh) => sh.opacity > 0);
     }
 
@@ -693,6 +705,50 @@ export default function App() {
       if (shape.x > maxX) { shape.x = maxX; shape.vx *= -1; }
       if (shape.y < minY) { shape.y = minY; shape.vy *= -1; }
       if (shape.y > maxY) { shape.y = maxY; shape.vy *= -1; }
+    }
+
+    function resolveCollisions(list: Shape[]) {
+      for (let i = 0; i < list.length; i++) {
+        for (let j = i + 1; j < list.length; j++) {
+          const a = list[i];
+          const b = list[j];
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const minDist = (a.size + b.size) / 2;
+
+          if (dist < minDist && dist > 0) {
+            // Normalize collision axis
+            const nx = dx / dist;
+            const ny = dy / dist;
+
+            // Separate overlapping shapes
+            const overlap = minDist - dist;
+            const massA = a.size * a.size;
+            const massB = b.size * b.size;
+            const totalMass = massA + massB;
+            a.x -= nx * overlap * (massB / totalMass);
+            a.y -= ny * overlap * (massB / totalMass);
+            b.x += nx * overlap * (massA / totalMass);
+            b.y += ny * overlap * (massA / totalMass);
+
+            // Relative velocity along collision axis
+            const dvx = a.vx - b.vx;
+            const dvy = a.vy - b.vy;
+            const dvDotN = dvx * nx + dvy * ny;
+
+            // Don't resolve if shapes are moving apart
+            if (dvDotN <= 0) continue;
+
+            // Elastic collision impulse
+            const impulse = (2 * dvDotN) / totalMass;
+            a.vx -= impulse * massB * nx;
+            a.vy -= impulse * massB * ny;
+            b.vx += impulse * massA * nx;
+            b.vy += impulse * massA * ny;
+          }
+        }
+      }
     }
 
     function tickExplode(s: Settings, w: number, h: number) {
@@ -774,6 +830,7 @@ export default function App() {
           bounceShape(shape, w, h, s);
           drawShape(ctx, shape);
         }
+        if (s.collision) resolveCollisions(explodeShapes);
 
         if (explodeTimer >= scatterDuration) {
           // Pick a reunion target
