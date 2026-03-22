@@ -88,41 +88,31 @@ export function playExplosion() {
   const now = c.currentTime;
   const out = getMaster();
 
+  // Sharp transient hit
   const osc = c.createOscillator();
   const gain = c.createGain();
-  osc.type = "sawtooth";
-  osc.frequency.setValueAtTime(800, now);
-  osc.frequency.exponentialRampToValueAtTime(40, now + 0.6);
-  gain.gain.setValueAtTime(0.3, now);
-  gain.gain.linearRampToValueAtTime(0.15, now + 0.1);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+  osc.type = "square";
+  osc.frequency.setValueAtTime(400, now);
+  osc.frequency.exponentialRampToValueAtTime(30, now + 0.15);
+  gain.gain.setValueAtTime(0.4, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
   osc.connect(gain).connect(out);
   osc.start(now);
-  osc.stop(now + 0.9);
+  osc.stop(now + 0.3);
 
-  const sub = c.createOscillator();
-  const subGain = c.createGain();
-  sub.type = "sine";
-  sub.frequency.setValueAtTime(80, now);
-  sub.frequency.exponentialRampToValueAtTime(30, now + 0.4);
-  subGain.gain.setValueAtTime(0.35, now);
-  subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-  sub.connect(subGain).connect(out);
-  sub.start(now);
-  sub.stop(now + 0.6);
-
+  // Noise burst — immediate, short
   const noise = c.createBufferSource();
-  noise.buffer = getNoiseBuffer(0.65);
+  noise.buffer = getNoiseBuffer(0.2);
   const nGain = c.createGain();
   const filter = c.createBiquadFilter();
   filter.type = "lowpass";
-  filter.frequency.setValueAtTime(4000, now);
-  filter.frequency.exponentialRampToValueAtTime(200, now + 0.6);
-  nGain.gain.setValueAtTime(0.25, now);
-  nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+  filter.frequency.setValueAtTime(6000, now);
+  filter.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+  nGain.gain.setValueAtTime(0.35, now);
+  nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
   noise.connect(filter).connect(nGain).connect(out);
   noise.start(now);
-  noise.stop(now + 0.65);
+  noise.stop(now + 0.25);
 }
 
 /** Ascending whoosh/sucking sound for gravity reunite */
