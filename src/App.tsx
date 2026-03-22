@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { initAudio, setMusic } from "./music";
+import { initAudio, playCollision, playExplosion, playGravity } from "./sfx";
 
 interface Shape {
   type: "circle" | "triangle" | "square" | "star";
@@ -19,8 +19,6 @@ interface Shape {
 
 type BgType = "black" | "space" | "rain";
 type Mode = "classic" | "explode";
-type MusicType = "off" | "piano" | "space";
-
 export interface Settings {
   mode: Mode;
   // Classic mode
@@ -37,7 +35,9 @@ export interface Settings {
   explodeSpeed: number;
   // Shared
   collision: boolean;
-  music: MusicType;
+  sfxCollision: boolean;
+  sfxExplosion: boolean;
+  sfxGravity: boolean;
   topBias: number;
   hPadding: number;
   background: BgType;
@@ -56,7 +56,9 @@ const DEFAULT_SETTINGS: Settings = {
   explodeScatterMax: 60,
   explodeSpeed: 1.5,
   collision: false,
-  music: "off",
+  sfxCollision: true,
+  sfxExplosion: true,
+  sfxGravity: true,
   topBias: 0.4,
   hPadding: 0.15,
   background: "black",
@@ -510,15 +512,27 @@ function SettingsMenu({
       />
 
       <OptionRow
-        label="Musica"
-        options={["off", "piano", "space"] as const}
-        value={settings.music}
-        labels={{ off: "Off", piano: "Piano", space: "Space" }}
-        onChange={(v) => {
-          initAudio();
-          setMusic(v);
-          update({ music: v });
-        }}
+        label="SFX Collisione"
+        options={["on", "off"] as const}
+        value={settings.sfxCollision ? "on" : "off"}
+        labels={{ on: "Attivo", off: "Disattivo" }}
+        onChange={(v) => update({ sfxCollision: v === "on" })}
+      />
+
+      <OptionRow
+        label="SFX Esplosione"
+        options={["on", "off"] as const}
+        value={settings.sfxExplosion ? "on" : "off"}
+        labels={{ on: "Attivo", off: "Disattivo" }}
+        onChange={(v) => update({ sfxExplosion: v === "on" })}
+      />
+
+      <OptionRow
+        label="SFX Gravità"
+        options={["on", "off"] as const}
+        value={settings.sfxGravity ? "on" : "off"}
+        labels={{ on: "Attivo", off: "Disattivo" }}
+        onChange={(v) => update({ sfxGravity: v === "on" })}
       />
 
       <div style={{ borderTop: "1px solid #333", margin: "20px 0", paddingTop: 16 }}>
@@ -672,11 +686,6 @@ export default function App() {
     setSettings(s);
   }, []);
 
-  // Music — sync when settings change (audio must already be unlocked)
-  useEffect(() => {
-    setMusic(settings.music);
-  }, [settings.music]);
-
   // Keyboard shortcuts
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -698,9 +707,6 @@ export default function App() {
   useEffect(() => {
     function onFirstInteraction() {
       initAudio();
-      setMusic(settingsRef.current.music);
-      document.removeEventListener("click", onFirstInteraction);
-      document.removeEventListener("touchstart", onFirstInteraction);
     }
     document.addEventListener("click", onFirstInteraction, { once: true });
     document.addEventListener("touchstart", onFirstInteraction, { once: true });
@@ -867,6 +873,12 @@ export default function App() {
             a.vy -= impulse * massB * ny;
             b.vx += impulse * massA * nx;
             b.vy += impulse * massA * ny;
+
+            // SFX
+            if (settingsRef.current.sfxCollision) {
+              const force = Math.min(1, Math.sqrt(dvx * dvx + dvy * dvy) / 5);
+              playCollision(force);
+            }
           }
         }
       }
@@ -918,6 +930,7 @@ export default function App() {
           });
           explodePhase = "exploding";
           explodeTimer = 0;
+          if (settingsRef.current.sfxExplosion) playExplosion();
         }
       } else if (explodePhase === "exploding") {
         for (const shape of explodeShapes) {
@@ -932,12 +945,13 @@ export default function App() {
         }
 
         if (explodeTimer >= EXPLODE_DURATION) {
-          // Give each piece a gentle velocity for scattering
+          // Keep explosion direction, scale to scatter speed
           for (const shape of explodeShapes) {
-            const speed = random(s.explodeSpeed * 0.4, s.explodeSpeed * 1.5);
-            const angle = random(0, Math.PI * 2);
-            shape.vx = Math.cos(angle) * speed;
-            shape.vy = Math.sin(angle) * speed;
+            const curSpeed = Math.sqrt(shape.vx * shape.vx + shape.vy * shape.vy);
+            const targetSpeed = random(s.explodeSpeed * 0.4, s.explodeSpeed * 1.5);
+            const scale = curSpeed > 0.01 ? targetSpeed / curSpeed : 0;
+            shape.vx *= scale;
+            shape.vy *= scale;
           }
           explodePhase = "scattered";
           explodeTimer = 0;
@@ -958,6 +972,7 @@ export default function App() {
           explodeTarget = { x: w / 2 + random(-w * 0.2, w * 0.2), y: h * 0.5 + random(-h * 0.15, h * 0.15) };
           explodePhase = "reuniting";
           explodeTimer = 0;
+          if (settingsRef.current.sfxGravity) playGravity();
         }
       } else if (explodePhase === "reuniting") {
         const progress = Math.min(1, explodeTimer / REUNITE_DURATION);

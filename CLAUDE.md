@@ -32,20 +32,13 @@ Single-page React app with two main files:
 - Colors cycle sequentially through a fixed palette (8 colors) to avoid duplicates
 - Reusable UI components: `OptionRow` (button group selector), `SliderRow` (labeled range input)
 
-### `src/music.ts` — Audio engine (Tone.js)
+### `src/sfx.ts` — Sound effects (Web Audio API)
 
-- **Piano mode**: plays real classical pieces from MIDI files in `public/midi/` (Debussy, Chopin, Satie), parsed with `@tonejs/midi`, rendered through Tone.js PolySynth + reverb. Shuffled playlist, loops forever
-- **Space mode**: generative ambient — drone pad chords, melodic phrases, shimmer accents, filtered pink noise. All procedural, never repeats
-- Audio context must be unlocked from a user gesture (click/tap). `initAudio()` is called from click handlers; if music is selected before unlock, it's stored as `pendingMode` and starts when ready
-- `setMusic(mode)` stops current music and starts new mode. Cleanup uses delayed `dispose()` to let reverb tails fade
-
-### MIDI assets — `public/midi/`
-
-- `clairdelune.mid` — Debussy, Clair de Lune
-- `arabesqu.mid` — Debussy, Arabesque No.1
-- `gymnop01.mid` — Satie, Gymnopédie No.1
-- `chno0902.mid` — Chopin, Nocturne Op.9 No.2
-- `chno1501.mid` — Chopin, Nocturne Op.15 No.1
+- **Collision** (`playCollision`): short percussive impact with noise burst, pitch/volume scale with collision force
+- **Explosion** (`playExplosion`): descending sawtooth sweep + sub bass thump + filtered noise burst
+- **Gravity** (`playGravity`): ascending whoosh with harmonic layers + bandpass-filtered noise
+- All three are independently toggleable in settings (on by default)
+- Audio context unlocked on first user gesture (click/tap). No external dependencies — pure Web Audio API
 
 ## Keyboard Shortcuts
 
@@ -55,8 +48,7 @@ Single-page React app with two main files:
 
 ## Key Dependencies
 
-- **Tone.js** — Web Audio synthesis and effects
-- **@tonejs/midi** — MIDI file parsing
+No external audio dependencies — sound effects use the native Web Audio API.
 
 ## Deploy
 
